@@ -4,12 +4,12 @@ import os
 from typing import IO, Any, BinaryIO
 from collections.abc import Iterable
 from jaxtyping import Float, Int
-
+import cs336_basics.Transformer as tf
 import numpy.typing as npt
 import torch
 from torch import Tensor
 
-
+device = torch.device("cpu")
 
 def run_linear(
     d_in: int,
@@ -17,6 +17,12 @@ def run_linear(
     weights: Float[Tensor, " d_out d_in"],
     in_features: Float[Tensor, " ... d_in"],
 ) -> Float[Tensor, " ... d_out"]:
+    device = torch.device("cpu")
+    weights = weights.to(device)
+    in_features = in_features.to(device)
+    model = tf.linear.Linear(d_in, d_out, device)
+    model.load_state_dict({"W":weights})
+    return model(in_features)
     """
     Given the weights of a Linear layer, compute the transformation of a batched input.
 
@@ -29,9 +35,6 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-
-    raise NotImplementedError
-
 
 def run_embedding(
     vocab_size: int,
@@ -51,8 +54,11 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
-
-    raise NotImplementedError
+    device = torch.device("cpu")
+    weights = weights.to(device)
+    model = tf.Embedding(vocab_size, d_model, device=device, dtype=None)
+    model.load_state_dict({"W":weights})
+    return model(token_ids)
 
 
 def run_swiglu(
@@ -63,6 +69,9 @@ def run_swiglu(
     w3_weight: Float[Tensor, " d_ff d_model"],
     in_features: Float[Tensor, " ... d_model"],
 ) -> Float[Tensor, " ... d_model"]:
+    model = tf.swiglu(d_model, d_ff, device)
+    model.load_state_dict({"W1.W": w1_weight, "V.W": w3_weight, "W2.W": w2_weight})
+    return model(in_features)
     """Given the weights of a SwiGLU network, return
     the output of your implementation with these weights.
 
@@ -84,7 +93,6 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
 
 
 def run_scaled_dot_product_attention(
@@ -379,8 +387,11 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
-
+    weights = weights.to(device)
+    in_features = in_features.to(device)
+    model = tf.RMS(d_model, eps, device)
+    model.load_state_dict({"scale":weights})
+    return model(in_features)
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     """Given a tensor of inputs, return the output of applying SiLU
