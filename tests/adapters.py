@@ -4,10 +4,12 @@ import os
 from typing import IO, Any, BinaryIO
 from collections.abc import Iterable
 from jaxtyping import Float, Int
-import cs336_basics.Transformer as tf
+import cs336_basics.Transformer_cs336 as tf
 import numpy.typing as npt
 import torch
 from torch import Tensor
+from einops import rearrange, reduce, einsum, repeat
+import cs336_basics.Tokenizer.BPE_tokenizer as bpe
 
 device = torch.device("cpu")
 
@@ -17,11 +19,10 @@ def run_linear(
     weights: Float[Tensor, " d_out d_in"],
     in_features: Float[Tensor, " ... d_in"],
 ) -> Float[Tensor, " ... d_out"]:
-    device = torch.device("cpu")
     weights = weights.to(device)
     in_features = in_features.to(device)
-    model = tf.linear.Linear(d_in, d_out, device)
-    model.load_state_dict({"W":weights})
+    model = tf.modules.Linear(d_in, d_out, device=device)
+    model.weight.data = weights
     return model(in_features)
     """
     Given the weights of a Linear layer, compute the transformation of a batched input.
@@ -57,7 +58,7 @@ def run_embedding(
     device = torch.device("cpu")
     weights = weights.to(device)
     model = tf.Embedding(vocab_size, d_model, device=device, dtype=None)
-    model.load_state_dict({"W":weights})
+    model.weight.data = weights
     return model(token_ids)
 
 
@@ -69,8 +70,10 @@ def run_swiglu(
     w3_weight: Float[Tensor, " d_ff d_model"],
     in_features: Float[Tensor, " ... d_model"],
 ) -> Float[Tensor, " ... d_model"]:
-    model = tf.swiglu(d_model, d_ff, device)
-    model.load_state_dict({"W1.W": w1_weight, "V.W": w3_weight, "W2.W": w2_weight})
+    model = tf.SwiGLU(d_model, d_ff, device)
+    model.w1.weight.data = w1_weight
+    model.w2.weight.data = w2_weight
+    model.w3.weight.data = w3_weight
     return model(in_features)
     """Given the weights of a SwiGLU network, return
     the output of your implementation with these weights.
@@ -93,6 +96,7 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
+    
 
 
 def run_scaled_dot_product_attention(
@@ -113,8 +117,8 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
-
+    result = tf.attention.scaled_dot_product_attention(Q, K, V, mask)
+    return result
 
 def run_multihead_self_attention(
     d_model: int,
@@ -125,6 +129,13 @@ def run_multihead_self_attention(
     o_proj_weight: Float[Tensor, " d_model d_v"],
     in_features: Float[Tensor, " ... sequence_length d_in"],
 ) -> Float[Tensor, " ... sequence_length d_out"]:
+    model = tf.MultiheadSelfAttention(d_model, num_heads)
+    model.q_proj_weight.weight.data = q_proj_weight
+    model.k_proj_weight.weight.data = k_proj_weight
+    model.v_proj_weight.weight.data = v_proj_weight
+    model.o_proj_weight.weight.data = o_proj_weight
+
+    return model(in_features)
     """
     Given the key, query, and value projection weights of a naive unbatched
     implementation of multi-head attention, return the output of an optimized batched
@@ -162,6 +173,13 @@ def run_multihead_self_attention_with_rope(
     in_features: Float[Tensor, " ... sequence_length d_in"],
     token_positions: Int[Tensor, " ... sequence_length"] | None = None,
 ) -> Float[Tensor, " ... sequence_length d_out"]:
+    model = tf.MultiheadSelfAttention(d_model, num_heads, theta=theta, max_seq_len=max_seq_len)
+    model.q_proj_weight.weight.data = q_proj_weight
+    model.k_proj_weight.weight.data = k_proj_weight
+    model.v_proj_weight.weight.data = v_proj_weight
+    model.o_proj_weight.weight.data = o_proj_weight
+    
+    return model(in_features, token_positions)
     """
     Given the key, query, and value projection weights of a naive unbatched
     implementation of multi-head attention, return the output of an optimized batched
@@ -197,6 +215,9 @@ def run_rope(
     in_query_or_key: Float[Tensor, " ... sequence_length d_k"],
     token_positions: Int[Tensor, " ... sequence_length"],
 ) -> Float[Tensor, " ... sequence_length d_k"]:
+    device = torch.device("cpu")
+    model = tf.modules.RotaryPositionEmbedding(theta=theta, d_k=d_k, max_seq_len=max_seq_len, device=device)
+    return model(in_query_or_key, token_positions)
     """
     Run RoPE for a given input tensor.
 
@@ -209,7 +230,6 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
 
 
 def run_transformer_block(
@@ -221,6 +241,30 @@ def run_transformer_block(
     weights: dict[str, Tensor],
     in_features: Float[Tensor, " batch sequence_length d_model"],
 ) -> Float[Tensor, " batch sequence_length d_model"]:
+
+    model = tf.TransformerBlock(
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        max_seq_len=max_seq_len,
+        theta=theta,
+        device=device,
+    )
+    model.multihead_self_attention.q_proj_weight.weight.data = weights["attn.q_proj.weight"].to(device)
+    model.multihead_self_attention.k_proj_weight.weight.data = weights["attn.k_proj.weight"].to(device)
+    model.multihead_self_attention.v_proj_weight.weight.data = weights["attn.v_proj.weight"].to(device)
+    model.multihead_self_attention.o_proj_weight.weight.data = weights["attn.output_proj.weight"].to(device)
+    model.RMSNorm_ln1.weight.data = weights["ln1.weight"].to(device)
+    model.RMSNorM_ln2.weight.data = weights["ln2.weight"].to(device)
+    model.SwiGLU_ffn.w1.weight.data = weights["ffn.w1.weight"].to(device)
+    model.SwiGLU_ffn.w2.weight.data = weights["ffn.w2.weight"].to(device)
+    model.SwiGLU_ffn.w3.weight.data = weights["ffn.w3.weight"].to(device)
+
+    batch_size, seq_len, _ = in_features.shape
+    token_positions = torch.arange(seq_len, device=in_features.device).unsqueeze(0).expand(batch_size, -1)
+    return model(in_features, token_positions)
+
+
     """
     Given the weights of a pre-norm Transformer block and input features,
     return the output of running the Transformer block on the input features.
@@ -296,6 +340,27 @@ def run_transformer_lm(
     weights: dict[str, Tensor],
     in_indices: Int[Tensor, " batch_size sequence_length"],
 ) -> Float[Tensor, " batch_size sequence_length vocab_size"]:
+    
+    model = tf.Transformer(d_model=d_model, num_heads=num_heads, d_ff=d_ff, vocab_size=vocab_size, context_length=context_length, num_layers=num_layers, max_seq_len=context_length, theta=rope_theta)
+    model.embedding.weight.data = weights["token_embeddings.weight"]
+    for i in range(num_layers):
+        block = model.transformer_list[i]
+        block.multihead_self_attention.q_proj_weight.weight.data = weights["layers." + str(i) + ".attn.q_proj.weight"]
+        block.multihead_self_attention.k_proj_weight.weight.data = weights["layers." + str(i) + ".attn.k_proj.weight"]
+        block.multihead_self_attention.v_proj_weight.weight.data = weights["layers." + str(i) + ".attn.v_proj.weight"]
+        block.multihead_self_attention.o_proj_weight.weight.data = weights["layers." + str(i) + ".attn.output_proj.weight"]
+        block.RMSNorm_ln1.weight.data = weights["layers." + str(i) + ".ln1.weight"]
+        block.RMSNorM_ln2.weight.data = weights["layers." + str(i) + ".ln2.weight"]
+        block.SwiGLU_ffn.w1.weight.data = weights["layers." + str(i) + ".ffn.w1.weight"]
+        block.SwiGLU_ffn.w2.weight.data = weights["layers." + str(i) + ".ffn.w2.weight"]
+        block.SwiGLU_ffn.w3.weight.data = weights["layers." + str(i) + ".ffn.w3.weight"]
+
+    model.final_norm.weight.data = weights["ln_final.weight"]
+
+    model.output_proj.weight.data = weights["lm_head.weight"]
+
+    result = model(in_indices)
+    return result
     """Given the weights of a Transformer language model and input indices,
     return the output of running a forward pass on the input indices.
 
@@ -389,8 +454,8 @@ def run_rmsnorm(
     """
     weights = weights.to(device)
     in_features = in_features.to(device)
-    model = tf.RMS(d_model, eps, device)
-    model.load_state_dict({"scale":weights})
+    model = tf.RMSNorm(d_model, eps, device)
+    model.weight.data = weights
     return model(in_features)
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -443,7 +508,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return tf.attention.softmax(in_features, dim)
 
 
 def run_cross_entropy(inputs: Float[Tensor, " batch_size vocab_size"], targets: Int[Tensor, " batch_size"]) -> Float[Tensor, ""]:
@@ -599,4 +664,11 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    my_BPE_tokenizer = bpe.BPETokenizer()
+    vocab, merges = my_BPE_tokenizer.train_BPE(
+        input_path = input_path,
+        vocab_size=vocab_size,
+        special_tokens=special_tokens
+    )
+
+    return vocab, merges
