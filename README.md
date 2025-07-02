@@ -6,8 +6,7 @@ For a full description of the assignment, see the assignment handout at
 If you see any issues with the assignment handout or code, please feel free to
 raise a GitHub issue or open a pull request with a fix.
 
-## 
-images: 
+## images: 
 ![image](https://github.com/user-attachments/assets/75efc789-df0d-4795-aef5-d644ffda3af5)
 ![image](https://github.com/user-attachments/assets/21bea950-c9a4-4d3a-a49e-c36f645e0d7d)
 ![image](https://github.com/user-attachments/assets/cb998679-64c1-4dc8-aa6a-ed5016c7cad4)
