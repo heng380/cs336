@@ -35,7 +35,7 @@ def main():
         # wandb.init(project=config["training"]["wandb_project"])
 
         # 给当前任务起个名字（比如根据时间、参数等）
-        run_name = f"bs{config['training']['batch_size']}_lr{config['optimizer']['learning_rate_max']}"
+        run_name = f"bs{config['training']['batch_size']}_lr{config['optimizer']['learning_rate_max']}_layer24"
 
         # 初始化 wandb，并传入 name 和 config
         wandb.init(
@@ -132,8 +132,12 @@ def main():
 
         if it % config["training"]["gpu_every"] == 0:
             gpu_stats = get_gpu_stats()
+            allocated_memory = int(torch.cuda.memory_allocated() / 1024**2)
+            cached_memory = (torch.cuda.memory_reserved() / 1024**2)
+            wandb.log({f'allocated_memory':allocated_memory, f'cached_memory':cached_memory})
             for idx, stat in enumerate(gpu_stats):
                 utilization, memory_used, temperature = map(float, stat)
+                
                 wandb.log({f'gpu_{idx}_utilization': utilization, f'gpu_{idx}_memory_used': memory_used, f'gpu_{idx}_temperature': temperature})
         
 if __name__ == "__main__":
