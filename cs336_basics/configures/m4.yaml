@@ -1,0 +1,39 @@
+model:
+  d_model: 512            # ↑ from 384 → more features per token
+  num_heads: 16            # 512 / 8 = 64, keeps per-head size stable
+  d_ff: 1344              # ↑ more capacity in the FFN (classic 4× rule)
+  num_layers: 4           # ↑ deeper network for more expressiveness
+  vocab_size: 50257       # Keep same
+  context_length: 256     # Keep same (affects quadratic attention cost)
+  rope_theta: 10000.0     # Keep same
+
+optimizer:
+  learning_rate_max: 2e-4
+  learning_rate_min: 1e-5
+  warmup_iters: 4000
+  cosine_iters: 20000       # same as total training steps
+  weight_decay: 0.001
+  max_l2_norm: 0.2
+
+training:
+  batch_size: 64            # 32 × 5000 × 256 = 40,960,000 tokens
+  max_iters: 20000
+  log_every: 500
+  val_every: 100
+  gpu_every: 200
+  checkpoint_path: "./cs336_basics/checkpoints/m4_model_v2.pt"
+  device: "auto"
+  wandb: true
+  wandb_project: "cs336_A1_heng"
+
+dataset:
+  # input_path: "./data/TinyStoriesV2-GPT4-valid.txt"
+  input_train_path: "./data/TinyStoriesV2-GPT4-train.txt"
+  input_val_path: "./data/TinyStoriesV2-GPT4-valid.txt"
+  train_path: "./cs336_basics/dataset/train_m4.bin"
+  val_path: "./cs336_basics/dataset/val_m4.bin"
+  vocab_out: "./cs336_basics/dataset/vocab_m4.json"
+  merges_out: "./cs336_basics/dataset/merges_m4.txt"
+  special_tokens: ["<|endoftext|>"]  
+
+# "<PAD>", "<UNK>", "<BOS>", "<EOS>"
