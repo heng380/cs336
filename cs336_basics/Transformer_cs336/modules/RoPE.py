@@ -81,6 +81,7 @@ class RotaryPositionEmbedding(nn.Module):
         inv_freq = 1 / (self.theta ** (torch.arange(0, self.d_k, 2, device=self.device) / self.d_k))  # d/2
         positions = torch.arange(0, self.max_seq_len, device=self.device)  # max_seq_len
         angles = positions[:, None] * inv_freq[None, :]  # max_seq_len * d/2
+        # angles = einsum(positions, inv_freq, 'i, j -> i j')  # max_seq_len, d/2
         cos = angles.cos()
         sin = angles.sin()
         R = torch.stack([
